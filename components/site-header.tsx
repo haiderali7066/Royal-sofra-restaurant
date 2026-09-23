@@ -103,7 +103,7 @@ export function SiteHeader() {
 
               <Link href="/" className="flex items-center gap-2.5">
                 <div className="relative size-10 shrink-0 overflow-hidden rounded-full border border-border bg-secondary shadow-sm md:size-11">
-                  <Image src="/logo-royal-sofra.png" alt={`${brand.name} logo`} fill className="object-cover" />
+                  <Image src="/logo-rs.jpeg" alt={`${brand.name} logo`} fill className="object-cover" />
                 </div>
                 <div className="flex flex-col leading-none">
                   <span className="text-xl font-black tracking-tight text-foreground md:text-2xl">{brand.name}</span>
