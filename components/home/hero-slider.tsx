@@ -7,7 +7,7 @@ import { Calendar, Clock } from 'lucide-react'
 import { brand } from '@/lib/mock-data'
 
 const HERO_IMAGES = [
-  'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=2000&q=85',
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQQ1j2b_w_019ZpyNyJlK0eG7UsBZyv3gzerXzdNPaRbg&s=10',
   'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=2000&q=85',
   'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=2000&q=85',
 ]
