@@ -74,24 +74,46 @@ function MenuContent() {
     <section className="pb-20 md:pb-24">
       {/* Dark hero banner */}
 
-<div className="bg-ink px-5 py-12 text-ink-foreground md:px-8 md:py-16">
-  <div className="mx-auto flex max-w-7xl flex-col items-center text-center">
+<div className="relative overflow-hidden bg-[#1a0f09] px-5 py-7 text-[#f8f1e5] md:px-8 md:py-9">
+  {/* Premium background design */}
+  <div
+    aria-hidden="true"
+    className="pointer-events-none absolute inset-0"
+  >
+    {/* Gold glow */}
+    {/* <div className="absolute -left-24 -top-24 h-64 w-64 rounded-full bg-[#c9a45c]/10 blur-3xl" /> */}
 
-    <p className="text-[11px] font-medium uppercase tracking-[0.35em] text-primary md:text-xs">
+    {/* <div className="absolute -bottom-32 -right-20 h-72 w-72 rounded-full bg-[#c9a45c]/10 blur-3xl" /> */}
+
+    {/* Decorative circles */}
+    <div className="absolute -right-32 top-1/2 hidden h-[420px] w-[420px] -translate-y-1/2 rounded-full border border-[#c9a45c]/10 md:block" />
+
+    <div className="absolute -right-20 top-1/2 hidden h-[300px] w-[300px] -translate-y-1/2 rounded-full border border-[#c9a45c]/10 md:block" />
+
+    {/* Subtle center line */}
+    <div className="absolute left-0 right-0 top-1/2 h-px bg-[#c9a45c]/[0.04]" />
+
+    {/* Texture lines */}
+    <div className="absolute left-1/2 top-0 h-full w-px bg-[#c9a45c]/[0.035]" />
+  </div>
+
+  <div className="relative mx-auto flex max-w-7xl flex-col items-center text-center">
+
+    <p className="text-[10px] font-medium uppercase tracking-[0.35em] text-[#c9a45c] md:text-[11px]">
       The Menu
     </p>
 
-    <h1 className="mt-4 max-w-4xl font-sans text-5xl font-light leading-[1] tracking-[-0.03em] md:mt-5 md:text-7xl lg:text-8xl">
+    <h1 className="mt-2 max-w-4xl font-sans text-4xl font-light leading-[0.95] tracking-[-0.03em] sm:text-5xl md:mt-3 md:text-6xl lg:text-7xl">
       Come hungry.
       <br />
-      <span className="font-serif italic font-medium text-primary">
+      <span className="font-serif italic font-medium text-[#c9a45c]">
         Leave royal.
       </span>
     </h1>
 
-    <div className="mt-5 h-px w-16 bg-primary/60 md:mt-6" />
+    <div className="mt-3 h-px w-12 bg-[#c9a45c]/70 md:mt-4" />
 
-    <p className="mt-5 max-w-2xl text-sm font-light leading-6 tracking-wide text-ink-foreground/65 md:mt-6 md:text-base md:leading-7">
+    <p className="mt-3 max-w-2xl text-xs font-light leading-5 tracking-wide text-[#f8f1e5]/60 sm:text-sm md:mt-4 md:leading-6">
       Familiar favourites, signature plates and a few delicious surprises —
       explore our menu and discover something worthy of the table.
     </p>
