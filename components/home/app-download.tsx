@@ -10,7 +10,7 @@ export function AppDownload() {
         <div className="z-20 mt-16 flex w-full justify-center md:absolute md:-bottom-12 md:left-12 md:mt-0 md:w-5/12">
           <div className="relative flex h-[480px] w-[240px] -rotate-0 items-center justify-center overflow-hidden rounded-[2.5rem] border-[8px] border-ink bg-ink shadow-[20px_20px_60px_rgba(0,0,0,0.3)] transition-transform duration-700 ease-out hover:rotate-0 md:h-[560px] md:w-[280px] md:rotate-3 md:rounded-[3rem] md:border-[10px]">
             <div className="absolute top-0 z-30 h-6 w-1/2 rounded-b-2xl bg-ink" />
-            <Image src="/app-mockup.png" alt="Royal Sofra app interface" fill className="z-20 object-cover" />
+            <Image src="/mobile-view.PNG" alt="Royal Sofra app interface" fill className="z-20 object-cover" />
           </div>
         </div>
 

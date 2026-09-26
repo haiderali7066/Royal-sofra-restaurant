@@ -26,9 +26,9 @@ export function PromoGrid({ promos }: { promos: PromoCard[] }) {
                 <div className="absolute inset-0 z-10 bg-primary/0 transition-colors duration-300 group-hover:bg-primary/10" />
               </div>
 
-              <h3 className="px-2 text-xl font-bold leading-snug text-foreground transition-colors group-hover:text-primary md:text-2xl">
+              {/* <h3 className="px-2 text-xl font-bold leading-snug text-foreground transition-colors group-hover:text-primary md:text-2xl">
                 {card.title}
-              </h3>
+              </h3> */}
             </Link>
           ))}
         </div>
