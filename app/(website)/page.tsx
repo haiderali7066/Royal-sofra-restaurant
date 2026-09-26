@@ -1,6 +1,6 @@
 import { menuItemsCollection, blogPostsCollection } from '@/lib/collections'
 import { homeCategories, promoCards } from '@/lib/mock-data'
-import { HeroSlider } from '@/components/home/hero-slider'
+import { HeroSlider } from '@/components/home/hero-slider2'
 import { MenuCategoryScroll } from '@/components/home/menu-category-scroll'
 import { SignatureCarousel } from '@/components/home/signature-carousel'
 import { PromoGrid } from '@/components/home/promo-grid'

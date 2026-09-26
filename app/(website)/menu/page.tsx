@@ -73,23 +73,34 @@ function MenuContent() {
   return (
     <section className="pb-20 md:pb-24">
       {/* Dark hero banner */}
-      <div className="bg-ink px-5 py-12 text-ink-foreground md:px-8 md:py-16">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-            The menu
-          </p>
 
-          <h1 className="mt-3 max-w-2xl text-balance font-serif text-4xl leading-tight tracking-tight md:text-6xl">
-            Come hungry.{' '}
-            <span className="italic text-primary">Leave royal.</span>
-          </h1>
+<div className="bg-ink px-5 py-12 text-ink-foreground md:px-8 md:py-16">
+  <div className="mx-auto flex max-w-7xl flex-col items-center text-center">
 
-          <p className="mt-4 max-w-xl text-pretty text-sm leading-6 text-ink-foreground/70 md:text-base">
-            Familiar favourites, signature plates and a few delicious surprises
-            — search the full menu or browse by section.
-          </p>
-        </div>
-      </div>
+    <p className="text-[11px] font-medium uppercase tracking-[0.35em] text-primary md:text-xs">
+      The Menu
+    </p>
+
+    <h1 className="mt-4 max-w-4xl font-sans text-5xl font-light leading-[1] tracking-[-0.03em] md:mt-5 md:text-7xl lg:text-8xl">
+      Come hungry.
+      <br />
+      <span className="font-serif italic font-medium text-primary">
+        Leave royal.
+      </span>
+    </h1>
+
+    <div className="mt-5 h-px w-16 bg-primary/60 md:mt-6" />
+
+    <p className="mt-5 max-w-2xl text-sm font-light leading-6 tracking-wide text-ink-foreground/65 md:mt-6 md:text-base md:leading-7">
+      Familiar favourites, signature plates and a few delicious surprises —
+      explore our menu and discover something worthy of the table.
+    </p>
+
+  </div>
+</div>
+
+
+
 
       {/* Sticky search + category rail */}
       <div className="sticky top-[169px] z-30 border-b border-border bg-background/95 backdrop-blur-sm lg:top-[69px]">
