@@ -16,11 +16,12 @@ export const brand = {
   name: 'Royal Sofra',
   tagline: 'Where every meal is served like royalty.',
   type: 'Premium Pakistani · BBQ · Chinese Restaurant',
-  address: '28 Garden Avenue, Lahore',
-  phone: '+92 42 111 76925',
-  phoneHref: 'tel:+924211176925',
-  email: 'info@royalsofra.pk',
-  hours: 'Mon–Sun · 12pm–12am',
+  address: '5th Road Commercial Market Rd, Block D Satellite Town, Rawalpindi, 46000',
+  phone: '+92 345 9567444',
+  phoneSecondary: '051-8894444',
+  phoneHref: 'tel:+923459567444',
+  email: 'info@royalsofra.com',
+  hours: 'Mon–Thu: 12pm–11:30pm · Fri–Sun: 12pm–1am',
 }
 
 // Editorial marketing copy for the homepage promo grid — not a persisted data
@@ -29,19 +30,19 @@ export const promoCards = [
   {
     title: 'The Royal Tasting',
     desc: "A 5-course journey through our chef's finest creations.",
-    img: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=1000&q=85',
+    img: 'https://res.cloudinary.com/dvu9vmcqd/image/upload/v1790527847/WhatsApp_Image_2026-09-27_at_8.41.02_PM_fku39l.jpg',
     href: '/menu?category=Special%20Karahi',
   },
   {
     title: 'Shinwari Nights',
     desc: 'Smoky, namkeen and unapologetically bold.',
-    img: 'https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?auto=format&fit=crop&w=800&q=85',
+    img: 'https://res.cloudinary.com/dvu9vmcqd/image/upload/v1790527847/WhatsApp_Image_2026-09-27_at_6.47.00_PM_nnildz.jpg',
     href: '/menu?category=Royal%20Shinwari',
   },
   {
     title: 'Midnight Grill',
     desc: 'Late night cravings meet royal flavours.',
-    img: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=85',
+    img: 'https://res.cloudinary.com/dvu9vmcqd/image/upload/v1790527847/WhatsApp_Image_2026-09-27_at_6.46.32_PM_zaiuqo.jpg',
     href: '/menu?category=Royal%20BBQ',
   },
 ]
