@@ -9,7 +9,7 @@ import { brand } from '@/lib/mock-data'
 const HERO_IMAGES = [
   'https://res.cloudinary.com/dvu9vmcqd/image/upload/v1790684288/WhatsApp_Image_2026-09-29_at_9.09.29_AM_nrxt8q.jpg',
   'https://res.cloudinary.com/dvu9vmcqd/image/upload/v1790684289/WhatsApp_Image_2026-09-29_at_9.09.09_AM_gciz3w.jpg',
-  'https://res.cloudinary.com/dvu9vmcqd/image/upload/v1790684289/WhatsApp_Image_2026-09-29_at_9.53.07_AM_sbafcf.jpg',
+  'https://res.cloudinary.com/dvu9vmcqd/image/upload/v1790701760/WhatsApp_Image_2026-09-29_at_10.08.57_PM_sybiks.jpg',
   
 ]
 
