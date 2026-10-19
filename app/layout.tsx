@@ -3,6 +3,7 @@ import { DM_Sans, Playfair_Display } from 'next/font/google'
 import type { Metadata, Viewport } from 'next'
 import { CookieConsent } from '@/components/cookie-consent'
 import './globals.css'
+import WhatsAppFloat from '@/components/WhatsAppFloat'
 
 const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-sans' })
 const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-serif' })
@@ -46,6 +47,7 @@ export default function RootLayout({
         {children}
         <CookieConsent />
         {process.env.NODE_ENV === 'production' && <Analytics />}
+        <WhatsAppFloat/>
       </body>
     </html>
   )
