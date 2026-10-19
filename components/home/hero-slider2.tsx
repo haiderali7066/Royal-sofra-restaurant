@@ -88,57 +88,63 @@ export function HeroSlider() {
       </section>
 
       {/* RESERVATION / TABLE SECTION */}
-      <div className="relative z-30 mx-auto w-[92%] max-w-[1000px] translate-y-0 border border-border bg-cream/95 p-4 shadow-[0_20px_40px_rgba(43,27,18,0.15)] backdrop-blur-md md:-mt-12 md:translate-y-1/2 md:p-6 lg:p-8">
-        <div className="flex flex-col items-center justify-between gap-4 md:flex-row md:gap-6">
-          <div className="flex w-full flex-row justify-between gap-4 sm:gap-8 md:w-auto">
-            {/* Reserve */}
-            <div className="flex items-center gap-3 text-muted-foreground">
-              <Calendar
-                size={20}
-                className="shrink-0 text-primary"
-              />
+      <div className="relative z-30 mx-auto w-[94%] max-w-[1000px] overflow-hidden border border-border bg-cream/95 p-4 shadow-[0_20px_40px_rgba(43,27,18,0.15)] backdrop-blur-md sm:w-[92%] sm:p-5 md:-mt-12 md:translate-y-1/2 md:p-6 lg:p-8">
+  <div className="flex min-w-0 flex-col gap-5 sm:gap-6 md:flex-row md:items-center md:justify-between">
 
-              <div className="flex flex-col text-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-foreground sm:text-xs">
-                  Reserve
-                </span>
+    {/* Details */}
+    <div className="grid w-full min-w-0 grid-cols-2 gap-3 sm:gap-6 md:w-auto md:flex md:items-center">
 
-                <span className="whitespace-nowrap text-xs font-light sm:text-sm">
-                  Book a table
-                </span>
-              </div>
-            </div>
+      {/* Reserve */}
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <Calendar
+          size={20}
+          className="h-5 w-5 shrink-0 text-primary sm:h-6 sm:w-6"
+        />
 
-            <div className="h-10 w-px bg-border" />
+        <div className="flex min-w-0 flex-col overflow-hidden">
+          <span className="truncate text-[10px] font-bold uppercase tracking-wider text-foreground sm:text-xs">
+            Reserve
+          </span>
 
-            {/* Hours */}
-            <div className="flex items-center gap-3 text-muted-foreground">
-              <Clock
-                size={20}
-                className="shrink-0 text-primary"
-              />
-
-              <div className="flex flex-col text-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-foreground sm:text-xs">
-                  Hours
-                </span>
-
-                <span className="whitespace-nowrap text-xs font-light sm:text-sm">
-                  {brand.hours}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Button */}
-          <Link
-            href="/contact"
-            className="w-full whitespace-nowrap bg-ink px-8 py-3.5 text-center text-xs font-bold uppercase tracking-[0.2em] text-ink-foreground transition-all duration-500 hover:bg-primary sm:py-4 md:w-auto"
-          >
-            Find a table
-          </Link>
+          <span className="truncate text-xs font-light text-muted-foreground sm:text-sm">
+            Book a table
+          </span>
         </div>
       </div>
+
+      {/* Divider */}
+      <div className="hidden h-10 w-px shrink-0 bg-border md:block" />
+
+      {/* Hours */}
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden sm:gap-3">
+        <Clock
+          size={20}
+          className="h-5 w-5 shrink-0 text-primary sm:h-6 sm:w-6"
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-foreground sm:text-xs">
+            Hours
+          </span>
+
+          <span className="block truncate text-xs font-light text-muted-foreground sm:text-sm">
+            {brand.hours}
+          </span>
+        </div>
+      </div>
+
+    </div>
+
+    {/* Button */}
+    <Link
+      href="/contact"
+      className="flex w-full shrink-0 items-center justify-center overflow-hidden bg-ink px-5 py-3.5 text-center text-[11px] font-bold uppercase tracking-[0.18em] text-ink-foreground transition-colors duration-300 hover:bg-primary sm:py-4 sm:text-xs md:w-auto md:min-w-[180px] md:px-8"
+    >
+      Find a table
+    </Link>
+
+  </div>
+</div>
     </>
   )
 }
