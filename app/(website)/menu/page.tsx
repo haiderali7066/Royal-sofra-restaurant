@@ -138,7 +138,7 @@ function MenuContent() {
   )
 
   return (
-    <section className={`min-h-screen bg-[#FAF5EC] ${cartCount > 0 ? 'pb-32' : 'pb-16'}`}>
+    <section className={`min-h-screen bg-[#e9c074] ${cartCount > 0 ? 'pb-32' : 'pb-16'}`}>
       {/* Keyframes */}
       <style>{`
         @keyframes heartPop { 0% { transform: scale(1) } 40% { transform: scale(1.35) } 100% { transform: scale(1) } }
