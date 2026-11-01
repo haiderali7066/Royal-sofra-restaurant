@@ -294,7 +294,7 @@ function MenuContent() {
 
       {/* Floating cart bar - same on every screen size */}
       {cartCount > 0 && (
-        <div className="menu-motion pointer-events-none fixed inset-x-0 bottom-4 z-40 px-4">
+        <div className="menu-motion pointer-events-none fixed inset-x-0 bottom-13 z-40 px-4">
           <div className="pointer-events-auto mx-auto flex max-w-xl animate-[barIn_.5s_cubic-bezier(.2,.8,.2,1)_both] items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-[#1F120B] to-[#4A2C1B] px-4 py-3 text-[#FAF5EC] shadow-[0_10px_30px_rgba(31,18,11,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(31,18,11,0.55)]">
             <div className="flex items-center gap-4">
               <div className="relative">
