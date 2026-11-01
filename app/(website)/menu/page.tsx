@@ -138,7 +138,7 @@ function MenuContent() {
   )
 
   return (
-    <section className={`min-h-screen bg-[#e9c074] ${cartCount > 0 ? 'pb-32' : 'pb-16'}`}>
+    <section className={`min-h-screen bg-[#FAF5EC] ${cartCount > 0 ? 'pb-32' : 'pb-16'}`}>
       {/* Keyframes */}
       <style>{`
         @keyframes heartPop { 0% { transform: scale(1) } 40% { transform: scale(1.35) } 100% { transform: scale(1) } }
@@ -387,11 +387,11 @@ function MenuCard({
     <div
       ref={wrapRef}
       style={{ transitionDelay: shown ? `${(index % 5) * 70}ms` : '0ms' }}
-      className={`transition-[opacity,transform] duration-700 ease-out motion-reduce:transition-none ${
+      className={`relative transition-[opacity,transform] duration-700 ease-out hover:z-20 motion-reduce:transition-none ${
         shown ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
       }`}
     >
-      <article className="group relative flex h-full gap-4 rounded-2xl border border-[#E8DCC6]/70 bg-white p-3 shadow-[0_4px_18px_rgba(62,36,21,0.07)] transition-all duration-300 md:flex-col md:gap-0 md:overflow-hidden md:p-0 md:hover:-translate-y-1.5 md:hover:border-[#C8963E]/60 md:hover:shadow-[0_18px_40px_rgba(62,36,21,0.18)]">
+      <article className="group relative flex h-full gap-4 rounded-2xl border border-[#E8DCC6]/70 bg-white p-3 shadow-[0_4px_18px_rgba(62,36,21,0.07)] transition-all duration-300 md:flex-col md:gap-0 md:overflow-hidden md:p-0 md:hover:-translate-y-1.5 md:hover:scale-[1.035] md:hover:border-[#C8963E] md:hover:shadow-[0_0_0_2px_rgba(200,150,62,0.85),0_0_26px_6px_rgba(200,150,62,0.42),0_20px_44px_rgba(62,36,21,0.22)]">
         {/* Image */}
         <div className="relative h-[120px] w-[120px] shrink-0 overflow-hidden rounded-xl bg-[#3E2415] sm:h-[132px] sm:w-[132px] md:aspect-[4/3] md:h-auto md:w-full md:rounded-none">
           <Link href={`/menu/${item.slug}`} className="absolute inset-0 block">
