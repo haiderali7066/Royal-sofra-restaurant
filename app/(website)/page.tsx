@@ -6,6 +6,7 @@ import { SignatureCarousel } from '@/components/home/signature-carousel'
 import { PromoGrid } from '@/components/home/promo-grid'
 import { FreshInsights } from '@/components/home/fresh-insights'
 import { AppDownload } from '@/components/home/app-download'
+import Testimonials  from '@/components/home/testimonials'
 import { OffersNewsletter } from '@/components/home/offers-newsletter'
 
 export const dynamic = 'force-dynamic'
@@ -42,6 +43,7 @@ export default async function HomePage() {
       {categories.length > 0 && <MenuCategoryScroll categories={categories} />}
       {signatureDishes.length > 0 && <SignatureCarousel dishes={signatureDishes} />}
       <PromoGrid promos={promoCards} />
+      <Testimonials />
       <FreshInsights posts={posts} />
       <AppDownload />
       <OffersNewsletter />
