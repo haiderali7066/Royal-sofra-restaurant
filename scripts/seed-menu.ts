@@ -48,6 +48,8 @@
  * menu-images-needed.txt listing the file names still missing.
  *
  * Safe to re-run: items are matched by slug, so nothing is duplicated.
+ * To apply changed descriptions / spice levels / homepage picks to items that are
+ * already in the database, re-run with --update (photos and ids are kept).
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -125,7 +127,7 @@ const group = (
 /* Menu data                                                           */
 /* ------------------------------------------------------------------ */
 
-const menu: MenuItem[] = [
+const baseMenu: MenuItem[] = [
   /* 1. Appetizers */
   ...make("Appetizers", [
     {
@@ -418,6 +420,170 @@ const DEFAULT_SPICE_LEVEL = 1;
  * e.g. ["Drinks", "Ice Cream", "Bar & Shakes"].
  */
 const NO_SPICE_CATEGORIES: Category[] = [];
+
+/* ------------------------------------------------------------------ */
+/* Descriptions, spice levels and homepage picks                       */
+/* (keyed by slug; "-half" / "-full" variants share one entry)         */
+/* ------------------------------------------------------------------ */
+
+const DESCRIPTIONS: Record<string, string> = {
+  // Pakistani Handi
+  "rajasthani-handi": "Chicken handi slow-cooked in a bold, fiery Rajasthani-style masala.",
+  "chicken-cheese-handi": "Creamy chicken handi finished with melted cheese.",
+  "chicken-boneless-handi": "Boneless chicken cooked slowly in a rich, aromatic handi gravy.",
+  "chicken-achari-handi": "Tender chicken in a tangy gravy spiced with pickling spices.",
+  "chicken-white-handi": "Tender chicken in a smooth, creamy white gravy.",
+  "madrasi-handi": "Chicken handi in a hot, bold Madras-style masala.",
+  "mughlai-handi": "Rich, mildly spiced Mughlai-style chicken handi in a creamy gravy.",
+  "chicken-palak-paneer": "Chicken and paneer in a smooth, spiced spinach gravy.",
+  "beef-palak-paneer": "Tender beef and paneer in a smooth, spiced spinach gravy.",
+  "mix-vegetable": "Seasonal vegetables cooked in a lightly spiced masala.",
+  "dal-mash-makhni": "Slow-cooked urad dal finished with butter and cream.",
+
+  // Special Karahi
+  "shahi-chicken-karahi": "Chicken karahi in a rich, royal-style gravy with bold spices.",
+  "chicken-karahi-makhni": "Chicken karahi in a buttery, tomato-based makhni gravy.",
+  "mutton-karahi-makhni": "Tender mutton karahi in a buttery, tomato-based makhni gravy.",
+  "batera-karahi": "Quail cooked karahi-style with tomatoes, ginger and green chillies.",
+  "chicken-lahori-karahi": "Lahori-style chicken karahi with tomatoes, ginger and green chillies.",
+  "chicken-white-karahi": "Chicken karahi in a creamy white gravy with mild spices.",
+  "chicken-tikka-karahi": "Smoky chicken tikka pieces tossed in a spiced karahi masala.",
+
+  // BBQ & Kabab Fries
+  "chicken-boti-fry": "Chicken boti pan-fried with onions and spices.",
+  "chicken-seekh-kabab-fry": "Chicken seekh kababs fried with onions and spices.",
+  "beef-seekh-kabab-fry": "Beef seekh kababs fried with onions and spices.",
+  "beef-tikka-fry": "Beef tikka pieces stir-fried with onions and spices.",
+
+  // Royal Shinwari
+  "shinwari-namkeen-karahi": "Peshawari namkeen karahi, cooked simply in the traditional style.",
+  "namkeen-tikka": "Peshawari-style tikka grilled simply with salt and light seasoning.",
+  "shinwari-chicken-karahi": "Chicken karahi cooked the Shinwari way, simple and full of flavour.",
+  "sulmani-karahi": "A traditional Peshawari-style karahi, simply seasoned and full of flavour.",
+
+  // Royal BBQ
+  "chicken-boti": "Juicy chicken boti marinated in spices and grilled.",
+  "malai-boti": "Chicken boti marinated in cream and mild spices, grilled until tender.",
+  "kastoori-boti": "Chicken boti marinated with kasuri methi and spices, grilled to perfection.",
+  "achari-boti": "Chicken boti marinated in tangy pickling spices and grilled.",
+  "hariyali-boti": "Chicken boti in a fresh green herb marinade, grilled until tender.",
+  "afghani-boti": "Mildly spiced, creamy Afghani-style chicken boti, grilled until tender.",
+  "chicken-piece-leg-chest": "Marinated chicken leg or chest piece, grilled and served hot.",
+  "royal-reshmi-kabab": "Soft, silky chicken reshmi kabab with a creamy, mild flavour.",
+  "chicken-cheese-kabab": "Chicken kabab stuffed with melted cheese.",
+  "chicken-gola-kabab": "Spiced minced chicken gola kabab, grilled until golden.",
+  "chicken-angara": "Smoky, fiery chicken angara grilled with bold spices.",
+  "batera-grill": "Quail marinated in spices and grilled.",
+  "beef-kabab-tikka": "Tender beef kabab or tikka, marinated and grilled.",
+  "beef-gola-kabab": "Spiced minced beef gola kabab, grilled until golden.",
+  "traditional-slow-roasted-chicken": "Chicken slow-roasted in the traditional way until tender and juicy.",
+  "spiced-steamed-and-fried-chicken": "Chicken steamed in spices, then fried until crisp outside and juicy inside.",
+
+  // Chinese
+  "chicken-manchurian": "Crispy chicken tossed in a tangy, savoury Manchurian sauce.",
+  "chicken-chow-mein": "Stir-fried noodles with chicken and vegetables.",
+  "vegetable-chow-mein": "Stir-fried noodles with fresh mixed vegetables.",
+  "chicken-masala-rice": "Fragrant rice cooked with chicken and masala spices.",
+  "chicken-fried-rice": "Wok-fried rice with chicken and vegetables.",
+  "vegetable-rice": "Wok-fried rice with mixed vegetables.",
+  "egg-rice": "Wok-fried rice tossed with egg.",
+  "chicken-shashlik": "Chicken pieces stir-fried with capsicum and onion in a tangy sauce.",
+  "chicken-jalfrezi": "Chicken stir-fried with capsicum, onion and tomato in a spiced sauce.",
+  "chicken-ginger": "Chicken stir-fried with fresh ginger in a savoury sauce.",
+
+  // Platters (serving sizes are already in the description)
+  "economy-platter": "A budget-friendly platter to share.",
+  "sofra-special-kabuli-pulao": "Fragrant Afghani-style Kabuli pulao with carrots and raisins.",
+
+  // Bar & Shakes (one-offs; the rest are generated from the name below)
+  "sweet-lassi": "Thick, creamy yogurt lassi, sweetened and served chilled.",
+  "namkeen-lassi": "Salted yogurt lassi, cool and refreshing.",
+  "simple-lassi": "Classic plain yogurt lassi, served cold.",
+  "cappuccino": "Espresso topped with steamed milk and a layer of foam.",
+  "latte": "Smooth espresso with plenty of steamed milk.",
+  "black-coffee": "Freshly brewed black coffee, bold and simple.",
+  "hot-chocolate": "Rich, creamy hot chocolate.",
+
+  // Drinks
+  "250-ml-can": "Chilled 250 ml soft drink can.",
+  "mineral-water-small": "Chilled mineral water, small bottle.",
+  "mineral-water-large": "Chilled mineral water, large bottle.",
+  "soft-drink": "Chilled soft drink, served cold.",
+  "soft-drink-1-5-liter": "1.5 litre soft drink bottle, ideal for sharing.",
+
+  // Ice Cream
+  "2-scoops-ice-cream": "Two scoops of creamy ice cream.",
+  "3-scoops-ice-cream": "Three scoops of creamy ice cream.",
+  "2-scoops-tutti-fruity": "Two scoops of colourful tutti frutti ice cream.",
+  "half-liter-ice-cream": "Half a litre of creamy ice cream to share or take away.",
+  "one-liter-ice-cream": "One litre of creamy ice cream to share or take away.",
+  "royal-special-ice-cream": "Our house-special ice cream, rich and indulgent.",
+
+  // Tandoor
+  "tandoor-per-head": "Freshly baked tandoor bread, charged per person.",
+  "roghani-naan": "Soft naan brushed with ghee and topped with sesame seeds.",
+  "kalonji-naan": "Soft naan topped with nigella (kalonji) seeds.",
+  "plain-naan": "Soft, freshly baked tandoor naan.",
+  "tandoori-roti": "Whole wheat roti baked fresh in the tandoor.",
+};
+
+/** Items not listed here stay Mild (1). Always review against your own recipes. */
+const SPICE: Record<string, SpiceLevel> = {
+  "rajasthani-handi": "Hot",
+  "madrasi-handi": "Hot",
+  "chicken-angara": "Hot",
+  "hot-and-sour-soup": "Medium",
+  "chicken-achari-handi": "Medium",
+  "shahi-chicken-karahi": "Medium",
+  "chicken-lahori-karahi": "Medium",
+  "chicken-tikka-karahi": "Medium",
+  "batera-karahi": "Medium",
+  "sulmani-karahi": "Medium",
+  "achari-boti": "Medium",
+  "beef-tikka-fry": "Medium",
+  "chicken-seekh-kabab-fry": "Medium",
+  "beef-seekh-kabab-fry": "Medium",
+  "chicken-manchurian": "Medium",
+  "chicken-jalfrezi": "Medium",
+  "chicken-masala-rice": "Medium",
+};
+
+/** Shown on the homepage. */
+const FEATURED = new Set([
+  "signature-special-soup",
+  "chicken-boneless-handi",
+  "chicken-white-handi",
+]);
+
+const baseSlug = (name: string) => slugify(name).replace(/-(half|full)$/, "");
+
+function describe(item: MenuItem): string {
+  const direct = DESCRIPTIONS[baseSlug(item.name)];
+  if (direct) return direct;
+
+  const n = item.name;
+  const lower = n.toLowerCase();
+  const strip = (suffix: string) => n.replace(suffix, "").trim();
+
+  if (/ Margarita$/.test(n)) return `A refreshing ${lower} mocktail, served chilled.`;
+  if (/ Mojito$/.test(n)) return `A cool ${lower} with fresh mint and lime.`;
+  if (/ Colada$/.test(n)) return `A creamy, frozen ${lower} mocktail.`;
+  if (/ Cold Coffee$/.test(n)) return `Chilled ${lower}, blended smooth over ice.`;
+  if (/ Ice Cream Shake$/.test(n)) return `A thick ${strip(" Ice Cream Shake").toLowerCase()} shake blended with ice cream.`;
+  if (/ Fresh Shake$/.test(n)) return `A fresh ${strip(" Fresh Shake").toLowerCase()} shake, blended with milk.`;
+  if (/ Special Shake$/.test(n)) return `A thick, indulgent shake loaded with ${strip(" Special Shake")}.`;
+  return "";
+}
+
+const menu: MenuItem[] = baseMenu.map((item) => {
+  const key = baseSlug(item.name);
+  return {
+    ...item,
+    description: item.description || describe(item),
+    spiceLevel: item.spiceLevel ?? SPICE[key],
+    featured: item.featured || FEATURED.has(key),
+  };
+});
 
 /** Matches the shape of items created by the admin panel: id "itm-<timestamp>" + slug. */
 function toDoc(item: MenuItem, index: number) {
