@@ -18,18 +18,42 @@
  *   --update             also overwrite items that already exist (default: leave them untouched)
  *   --json               write menu.json instead of touching the database
  *   --force              write even if existing documents have a different shape
+ *   --find-images        search online photos for every item (no database needed)
+ *   --apply-images       save the links from menu-images.json on the items (add --rehost for Cloudinary)
+ *   --images             attach photos to items already in the database (see below)
+ *   --dir=PATH           folder with photos for --images (default scripts/menu-images)
  *
  * Env vars:
  *   MONGODB_URI          connection string (required)
  *   MONGODB_DB           database name (default "royal_sofra")
  *   MONGODB_COLLECTION   collection name (default "menu_items")
- *   MENU_PLACEHOLDER_IMAGE  optional image URL used for every item until you upload real photos
+ *   MENU_PLACEHOLDER_IMAGE  optional image URL used for every item that has no photo yet
+ *   CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET   needed by --images
+ *
+ * Online photos (no files needed):
+ *   1. --find-images   searches for a photo per item, writes menu-images.json and
+ *                      menu-images-review.html (open it to check every match)
+ *   2. edit menu-images.json if any photo is wrong (swap the "url", or use an "alternatives" entry)
+ *   3. --apply-images  saves those links on the items in the database
+ *                      add --rehost to copy each photo into your Cloudinary first (more reliable)
+ *   Search provider, set one key in the env file:
+ *     SERPER_API_KEY   Google image results via serper.dev (best match for local dishes)
+ *     PEXELS_API_KEY   free, licensed stock photos from pexels.com (weaker match for local dishes)
+ *   IMAGE_PROVIDER=serper|pexels picks one if both keys are set.
+ *
+ * Photos from your own files: put files named after the item slug in scripts/menu-images, e.g.
+ *   chicken-boneless-handi.jpg, hot-and-sour-soup.webp, mint-margarita.png
+ * then run with --images. Each photo is uploaded to Cloudinary (folder royal-sofra/menu)
+ * and its URL is saved on the matching item. The script also writes
+ * menu-images-needed.txt listing the file names still missing.
  *
  * Safe to re-run: items are matched by slug, so nothing is duplicated.
  */
 
-import { writeFileSync } from "node:fs";
-import { MongoClient } from "mongodb";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { basename, extname, join } from "node:path";
+import { MongoClient, type Collection } from "mongodb";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -320,6 +344,58 @@ const menu: MenuItem[] = [
 ];
 
 /* ------------------------------------------------------------------ */
+/* Image search queries                                                */
+/* ------------------------------------------------------------------ */
+
+/** Added to the item name when searching. */
+const CATEGORY_HINT: Partial<Record<Category, string>> = {
+  "Pakistani Handi": "pakistani",
+  "Special Karahi": "pakistani",
+  "Royal Shinwari": "peshawari",
+  "Royal BBQ": "bbq",
+  "Bar & Shakes": "drink",
+  "Ice Cream": "dessert",
+};
+
+/** Items whose name alone would find the wrong thing. Key = slug. */
+const QUERY_OVERRIDES: Record<string, string> = {
+  "signature-special-soup": "chicken soup bowl restaurant",
+  "royal-grand-feast": "pakistani bbq mixed grill platter large",
+  "sofra-family-feast": "pakistani family platter bbq karahi naan",
+  "royal-sofra-special": "pakistani bbq mixed platter",
+  "shahi-platter": "pakistani mixed grill platter",
+  "economy-platter": "bbq platter tikka kabab naan",
+  "sofra-special-kabuli-pulao": "kabuli pulao",
+  "tandoor-per-head": "tandoori naan roti",
+  "250-ml-can": "soft drink can 250ml",
+  "mineral-water-small": "small mineral water bottle",
+  "mineral-water-large": "large mineral water bottle",
+  "soft-drink": "soft drink glass cola ice",
+  "soft-drink-1-5-liter": "1.5 liter soft drink bottle",
+  "royal-special-ice-cream": "ice cream sundae",
+  "half-liter-ice-cream": "ice cream tub half liter",
+  "one-liter-ice-cream": "ice cream tub one liter",
+  "chicken-piece-leg-chest": "grilled chicken leg piece",
+  "batera-grill": "quail bbq grilled",
+  "batera-karahi-half": "quail karahi",
+  "batera-karahi-full": "quail karahi",
+  "traditional-slow-roasted-chicken": "slow roasted whole chicken",
+  "spiced-steamed-and-fried-chicken": "spiced fried chicken",
+  "royal-reshmi-kabab": "reshmi kabab",
+  "chicken-angara": "chicken angara tikka",
+  "rajasthani-handi": "rajasthani chicken handi",
+  "namkeen-tikka": "namkeen tikka peshawari",
+  "sulmani-karahi": "namkeen mutton karahi peshawari",
+};
+
+function imageQuery(item: MenuItem): string {
+  const override = QUERY_OVERRIDES[slugify(item.name)];
+  if (override) return override;
+  const base = item.name.replace(/\((half|full)\)/i, "").replace(/\s+/g, " ").trim();
+  return `${base} ${CATEGORY_HINT[item.category] ?? ""}`.trim();
+}
+
+/* ------------------------------------------------------------------ */
 /* Document mapping – rename fields here if your schema differs        */
 /* (run with --inspect to see what an existing document looks like)    */
 /* ------------------------------------------------------------------ */
@@ -333,6 +409,16 @@ const slugify = (name: string) =>
 
 const ID_BASE = Date.now();
 
+/** Your admin stores spice level as a number: Mild = 1, Medium = 2, Hot = 3. */
+const SPICE_NUMBER: Record<SpiceLevel, number> = { Mild: 1, Medium: 2, Hot: 3 };
+const DEFAULT_SPICE_LEVEL = 1;
+/**
+ * Categories that should save spiceLevel 0 (no chili icon). Left empty on purpose:
+ * 0 is not something the admin form can produce, so only use it if your site handles it,
+ * e.g. ["Drinks", "Ice Cream", "Bar & Shakes"].
+ */
+const NO_SPICE_CATEGORIES: Category[] = [];
+
 /** Matches the shape of items created by the admin panel: id "itm-<timestamp>" + slug. */
 function toDoc(item: MenuItem, index: number) {
   return {
@@ -342,11 +428,15 @@ function toDoc(item: MenuItem, index: number) {
     description: item.description,
     category: item.category,
     price: item.price,
-    tag: item.tag ?? "",
-    spiceLevel: item.spiceLevel ?? "",
+    ...(item.tag ? { tag: item.tag } : {}), // only saved when set, like the admin form
+    spiceLevel: item.spiceLevel
+      ? SPICE_NUMBER[item.spiceLevel]
+      : NO_SPICE_CATEGORIES.includes(item.category)
+        ? 0
+        : DEFAULT_SPICE_LEVEL,
     image: item.image ?? process.env.MENU_PLACEHOLDER_IMAGE ?? "",
-    available: item.available,
-    featured: item.featured,
+    isAvailable: item.available,
+    isFeatured: item.featured,
   };
 }
 
@@ -400,6 +490,290 @@ async function inspect(client: MongoClient, fallbackDb?: string) {
   }
 }
 
+async function uploadToCloudinary(
+  filePath: string,
+  slug: string,
+  cloud: string,
+  key: string,
+  secret: string
+): Promise<string> {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const folder = "royal-sofra/menu";
+  const toSign = `folder=${folder}&overwrite=true&public_id=${slug}&timestamp=${timestamp}`;
+  const signature = createHash("sha1").update(toSign + secret).digest("hex");
+
+  const fd = new FormData();
+  if (/^https?:\/\//i.test(filePath)) fd.append("file", filePath); // Cloudinary fetches the URL itself
+  else fd.append("file", new Blob([readFileSync(filePath)]), basename(filePath));
+  fd.append("api_key", key);
+  fd.append("timestamp", timestamp);
+  fd.append("signature", signature);
+  fd.append("folder", folder);
+  fd.append("public_id", slug);
+  fd.append("overwrite", "true");
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/image/upload`, {
+    method: "POST",
+    body: fd,
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    secure_url?: string;
+    error?: { message?: string };
+  };
+  if (!res.ok || !json.secure_url) {
+    throw new Error(json.error?.message ?? `${res.status} ${res.statusText}`);
+  }
+  return json.secure_url;
+}
+
+type ImageEntry = {
+  slug: string;
+  name: string;
+  category: string;
+  query: string;
+  url: string;
+  alternatives: string[];
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** True if the URL loads and really is an image (filters dead links and hotlink blocks). */
+async function isImageUrl(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      headers: { Range: "bytes=0-1023", "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(6000),
+    });
+    void res.body?.cancel();
+    return res.ok && (res.headers.get("content-type") ?? "").startsWith("image/");
+  } catch {
+    return false;
+  }
+}
+
+async function searchImages(provider: string, query: string): Promise<string[]> {
+  if (provider === "pexels") {
+    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=5&orientation=landscape`;
+    const res = await fetch(url, { headers: { Authorization: process.env.PEXELS_API_KEY ?? "" } });
+    if (!res.ok) throw new Error(`Pexels ${res.status} ${res.statusText}`);
+    const json = (await res.json()) as { photos?: { src: { large: string } }[] };
+    return (json.photos ?? []).map((p) => p.src.large);
+  }
+
+  // serper.dev – Google image results
+  const res = await fetch(process.env.SERPER_URL ?? "https://google.serper.dev/images", {
+    method: "POST",
+    headers: { "X-API-KEY": process.env.SERPER_API_KEY ?? "", "Content-Type": "application/json" },
+    body: JSON.stringify({ q: query, num: 10 }),
+  });
+  if (!res.ok) throw new Error(`Serper ${res.status} ${res.statusText}`);
+  const json = (await res.json()) as { images?: { imageUrl?: string }[] };
+  const candidates = (json.images ?? [])
+    .map((i) => i.imageUrl ?? "")
+    .filter((u) => u.startsWith("https://"));
+
+  const valid: string[] = [];
+  for (const u of candidates) {
+    if (valid.length >= 4) break;
+    if (await isImageUrl(u)) valid.push(u);
+  }
+  return valid;
+}
+
+const esc = (t: string) =>
+  t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+function reviewHtml(entries: ImageEntry[]) {
+  const cards = entries
+    .map(
+      (e) => `<figure>
+  ${e.url ? `<img src="${esc(e.url)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : `<div class="none">no photo found</div>`}
+  <figcaption><b>${esc(e.name)}</b><span>${esc(e.category)}</span><code>${esc(e.slug)}</code><em>searched: ${esc(e.query)}</em></figcaption>
+</figure>`
+    )
+    .join("\n");
+  return `<!doctype html><meta charset="utf-8"><title>Menu photo review</title>
+<style>
+body{font:14px system-ui;margin:24px;background:#faf6f0;color:#2b1810}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+figure{margin:0;background:#fff;border:1px solid #e5d9cb;border-radius:12px;overflow:hidden}
+img,.none{width:100%;height:150px;object-fit:cover;display:block;background:#eee}
+.none{display:grid;place-items:center;color:#999}
+figcaption{padding:10px;display:grid;gap:3px}
+span,em{color:#6f5a4c;font-size:12px}code{font-size:11px;color:#8a6d3b}
+</style>
+<h1>Menu photo review (${entries.length} items)</h1>
+<p>Wrong photo? Open <code>menu-images.json</code> and change that item's <code>url</code> (try one of its <code>alternatives</code>).</p>
+<main>
+${cards}
+</main>`;
+}
+
+async function findImages(items: MenuItem[]) {
+  const provider = (
+    process.env.IMAGE_PROVIDER ??
+    (process.env.SERPER_API_KEY ? "serper" : process.env.PEXELS_API_KEY ? "pexels" : "")
+  ).toLowerCase();
+
+  if (provider !== "serper" && provider !== "pexels") {
+    console.error("Set SERPER_API_KEY (Google results, serper.dev) or PEXELS_API_KEY (free, pexels.com)");
+    console.error("in your env file, then run again.");
+    process.exit(1);
+  }
+  if (provider === "serper" && !process.env.SERPER_API_KEY) {
+    console.error("IMAGE_PROVIDER=serper needs SERPER_API_KEY.");
+    process.exit(1);
+  }
+  if (provider === "pexels" && !process.env.PEXELS_API_KEY) {
+    console.error("IMAGE_PROVIDER=pexels needs PEXELS_API_KEY.");
+    process.exit(1);
+  }
+
+  console.log(`Searching photos with ${provider}\n`);
+  const cache = new Map<string, string[]>();
+  const entries: ImageEntry[] = [];
+
+  for (const [i, item] of items.entries()) {
+    const query = imageQuery(item);
+    let urls = cache.get(query);
+    if (!urls) {
+      try {
+        urls = await searchImages(provider, query);
+      } catch (err) {
+        console.log(`  ! ${item.name}: ${(err as Error).message}`);
+        urls = [];
+      }
+      cache.set(query, urls);
+      await sleep(provider === "pexels" ? 400 : 150);
+    }
+    entries.push({
+      slug: slugify(item.name),
+      name: item.name,
+      category: item.category,
+      query,
+      url: urls[0] ?? "",
+      alternatives: urls.slice(1),
+    });
+    console.log(`  ${urls[0] ? "✓" : "✗"} [${i + 1}/${items.length}] ${item.name}  ←  ${query}`);
+  }
+
+  writeFileSync("menu-images.json", JSON.stringify(entries, null, 2));
+  writeFileSync("menu-images-review.html", reviewHtml(entries));
+
+  const found = entries.filter((e) => e.url).length;
+  console.log(`\nFound photos for ${found} of ${entries.length} items.`);
+  console.log("Open menu-images-review.html to check the matches; fix any in menu-images.json.");
+
+  const hosts = [...new Set(entries.filter((e) => e.url).map((e) => new URL(e.url).hostname))];
+  console.log(
+    `\nThese photos come from ${hosts.length} different sites. next/image only loads hosts listed in\n` +
+      `next.config images.remotePatterns, so either add them, or use --rehost when applying to copy\n` +
+      `the photos into Cloudinary (your existing host).`
+  );
+}
+
+async function applyImages(col: Collection) {
+  if (!existsSync("menu-images.json")) {
+    console.error("menu-images.json not found. Run --find-images first.");
+    process.exit(1);
+  }
+  const entries = JSON.parse(readFileSync("menu-images.json", "utf8")) as ImageEntry[];
+  const rehost = flag("rehost");
+
+  const cloud = process.env.CLOUDINARY_CLOUD_NAME;
+  const key = process.env.CLOUDINARY_API_KEY;
+  const secret = process.env.CLOUDINARY_API_SECRET;
+  if (rehost && (!cloud || !key || !secret)) {
+    console.error("--rehost needs CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.");
+    process.exit(1);
+  }
+
+  let applied = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const e of entries) {
+    if (!e.url) continue;
+    try {
+      let url = e.url;
+      if (rehost) url = await uploadToCloudinary(e.url, e.slug, cloud!, key!, secret!);
+      const filter = flag("update")
+        ? { slug: e.slug }
+        : { slug: e.slug, $or: [{ image: "" }, { image: { $exists: false } }] };
+      const r = await col.updateOne(filter, { $set: { image: url } });
+      if (r.matchedCount) {
+        applied++;
+        console.log(`  ✓ ${e.slug}`);
+      } else {
+        skipped++;
+      }
+    } catch (err) {
+      failed++;
+      console.log(`  ✗ ${e.slug} – ${(err as Error).message}`);
+    }
+  }
+  console.log(`\nApplied ${applied}, skipped ${skipped} (already have a photo or not in database), failed ${failed}.`);
+  if (skipped) console.log("Add --update to replace photos that are already set.");
+}
+
+async function syncImages(col: Collection, items: MenuItem[]) {
+  const dir = option("dir") ?? "scripts/menu-images";
+  const exts = [".jpg", ".jpeg", ".png", ".webp"];
+  const files = existsSync(dir)
+    ? readdirSync(dir).filter((f) => exts.includes(extname(f).toLowerCase()))
+    : [];
+  const bySlug = new Map(files.map((f) => [basename(f, extname(f)).toLowerCase(), f]));
+  const slugs = items.map((i) => slugify(i.name));
+
+  // 1) upload local photos
+  if (files.length) {
+    const cloud = process.env.CLOUDINARY_CLOUD_NAME;
+    const key = process.env.CLOUDINARY_API_KEY;
+    const secret = process.env.CLOUDINARY_API_SECRET;
+    if (!cloud || !key || !secret) {
+      console.error("Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET");
+      console.error("in your env file (same values your admin panel uses for uploads).");
+      process.exit(1);
+    }
+    let done = 0;
+    for (const slug of slugs) {
+      const file = bySlug.get(slug);
+      if (!file) continue;
+      try {
+        const url = await uploadToCloudinary(join(dir, file), slug, cloud, key, secret);
+        const r = await col.updateOne({ slug }, { $set: { image: url } });
+        if (r.matchedCount === 0) throw new Error("item not in database – seed the menu first");
+        done++;
+        console.log(`  ✓ ${slug}`);
+      } catch (err) {
+        console.log(`  ✗ ${slug} – ${(err as Error).message}`);
+      }
+    }
+    console.log(`\nUploaded ${done} of ${files.length} photos.`);
+    const unknown = [...bySlug.keys()].filter((k) => !slugs.includes(k));
+    if (unknown.length) {
+      console.log(`Ignored (no item with that slug): ${unknown.join(", ")}`);
+    }
+  } else {
+    console.log(`No photos found in ${dir}.`);
+  }
+
+  // 2) list what is still missing
+  const noImage = { slug: { $in: slugs }, $or: [{ image: "" }, { image: { $exists: false } }] };
+  const missing = await col.find(noImage).project({ slug: 1, _id: 0 }).toArray();
+  writeFileSync(
+    "menu-images-needed.txt",
+    missing.map((m) => `${m.slug}.jpg`).join("\n") + "\n"
+  );
+  console.log(`${missing.length} items have no photo (names saved to menu-images-needed.txt).`);
+
+  // 3) optional placeholder for the rest
+  const placeholder = process.env.MENU_PLACEHOLDER_IMAGE;
+  if (placeholder && missing.length) {
+    const r = await col.updateMany(noImage, { $set: { image: placeholder } });
+    console.log(`Placeholder image set on ${r.modifiedCount} items.`);
+  }
+}
+
 async function main() {
   const only = option("only");
   const items = only ? menu.filter((m) => m.category === only) : menu;
@@ -425,9 +799,17 @@ async function main() {
     return;
   }
 
+  if (flag("find-images") && !flag("dry")) {
+    await findImages(items);
+    return;
+  }
+
   if (flag("dry")) {
     for (const i of items) {
-      console.log(`${i.category.padEnd(20)} ${i.name.padEnd(40)} Rs. ${i.price}`);
+      console.log(
+        `${i.category.padEnd(20)} ${i.name.padEnd(40)} Rs. ${i.price}` +
+          (flag("find-images") ? `   ← "${imageQuery(i)}"` : "")
+      );
     }
     console.log("\nDry run – nothing was written.");
     return;
@@ -468,6 +850,18 @@ async function main() {
 
     const collName = process.env.MONGODB_COLLECTION ?? "menu_items";
     const col = client.db(dbName).collection(collName);
+
+    if (flag("apply-images")) {
+      console.log(`Applying photos to ${dbName}.${collName}\n`);
+      await applyImages(col);
+      return;
+    }
+
+    if (flag("images")) {
+      console.log(`Images for ${dbName}.${collName}\n`);
+      await syncImages(col, items);
+      return;
+    }
     const overwrite = flag("update");
     const now = new Date();
 
@@ -487,9 +881,9 @@ async function main() {
     // Compare against an existing document so a field-name mismatch is caught before writing.
     const existing = await col.findOne({});
     if (existing && !flag("force")) {
-      const ignore = new Set(["_id", "__v", "createdAt", "updatedAt"]);
+      const ignore = new Set(["_id", "__v", "createdAt", "updatedAt", "tag"]);
       const theirs = Object.keys(existing).filter((k) => !ignore.has(k));
-      const ours = Object.keys(toDoc(items[0], 0));
+      const ours = Object.keys(toDoc(items[0], 0)).filter((k) => !ignore.has(k));
       const missing = theirs.filter((k) => !ours.includes(k));
       const extra = ours.filter((k) => !theirs.includes(k));
       if (missing.length || extra.length) {
@@ -502,13 +896,17 @@ async function main() {
     }
 
     const ops = items.map((item, idx) => {
-      const doc = toDoc(item, idx);
+      const { id, image, ...doc } = toDoc(item, idx);
       return {
         updateOne: {
           filter: { slug: doc.slug },
           update: overwrite
-            ? { $set: { ...doc, updatedAt: now }, $setOnInsert: { createdAt: now } }
-            : { $setOnInsert: { ...doc, createdAt: now, updatedAt: now } },
+            ? {
+                // keep existing id and photo; only write a photo if the script has one
+                $set: { ...doc, ...(image ? { image } : {}), updatedAt: now },
+                $setOnInsert: { id, createdAt: now, ...(image ? {} : { image }) },
+              }
+            : { $setOnInsert: { id, image, ...doc, createdAt: now, updatedAt: now } },
           upsert: true,
         },
       };
