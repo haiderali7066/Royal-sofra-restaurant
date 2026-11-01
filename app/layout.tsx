@@ -47,7 +47,7 @@ export default function RootLayout({
         {children}
         <CookieConsent />
         {process.env.NODE_ENV === 'production' && <Analytics />}
-        <WhatsAppFloat/>
+        {/* <WhatsAppFloat/> */}
       </body>
     </html>
   )
