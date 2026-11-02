@@ -51,7 +51,7 @@ export const menuCategories: MenuCategory[] = [
   'Appetizers',
   'Pakistani Handi',
   'Special Karahi',
-  'BBQ & Kabab Fries',
+  'BBQ & Fried Kababs',
   'Royal Shinwari',
   'Royal BBQ',
   'Chinese',

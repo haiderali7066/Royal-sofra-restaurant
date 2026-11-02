@@ -18,6 +18,7 @@
  *   --update             also overwrite items that already exist (default: leave them untouched)
  *   --json               write menu.json instead of touching the database
  *   --force              write even if existing documents have a different shape
+ *   --auto-images        find online photos and save them on the items in one run
  *   --find-images        search online photos for every item (no database needed)
  *   --apply-images       save the links from menu-images.json on the items (add --rehost for Cloudinary)
  *   --images             attach photos to items already in the database (see below)
@@ -27,7 +28,8 @@
  *   MONGODB_URI          connection string (required)
  *   MONGODB_DB           database name (default "royal_sofra")
  *   MONGODB_COLLECTION   collection name (default "menu_items")
- *   MENU_PLACEHOLDER_IMAGE  optional image URL used for every item that has no photo yet
+ *   MENU_PLACEHOLDER_IMAGE  image used when an item has no photo (default /images/menu-placeholder.png,
+ *                           a file in your public/ folder)
  *   CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET   needed by --images
  *
  * Online photos (no files needed):
@@ -36,10 +38,13 @@
  *   2. edit menu-images.json if any photo is wrong (swap the "url", or use an "alternatives" entry)
  *   3. --apply-images  saves those links on the items in the database
  *                      add --rehost to copy each photo into your Cloudinary first (more reliable)
- *   Search provider, set one key in the env file:
- *     SERPER_API_KEY   Google image results via serper.dev (best match for local dishes)
- *     PEXELS_API_KEY   free, licensed stock photos from pexels.com (weaker match for local dishes)
- *   IMAGE_PROVIDER=serper|pexels picks one if both keys are set.
+ *   One-step version:  --auto-images  (find + save in a single run, no review step)
+ *   Search provider (works with no key at all; keys only improve the match):
+ *     (no key)         Wikimedia Commons, free, openly licensed photos
+ *     PEXELS_API_KEY   free stock photos from pexels.com
+ *     SERPER_API_KEY   Google image results via serper.dev (paid, best match for local dishes)
+ *   IMAGE_PROVIDER=wikimedia|pexels|serper forces one.
+ *   Items with no photo found get the placeholder image, so image is never empty.
  *
  * Photos from your own files: put files named after the item slug in scripts/menu-images, e.g.
  *   chicken-boneless-handi.jpg, hot-and-sour-soup.webp, mint-margarita.png
@@ -65,7 +70,7 @@ type Category =
   | "Appetizers"
   | "Pakistani Handi"
   | "Special Karahi"
-  | "BBQ & Kabab Fries"
+  | "BBQ & Fried Kababs"
   | "Royal Shinwari"
   | "Royal BBQ"
   | "Chinese"
@@ -212,7 +217,7 @@ const baseMenu: MenuItem[] = [
   ]),
 
   /* 4. Tikka / Kabab Fries (BBQ) */
-  ...make("BBQ & Kabab Fries", [
+  ...make("BBQ & Fried Kababs", [
     { name: "Chicken Boti Fry", price: 2760 },
     { name: "Chicken Seekh Kabab Fry", price: 1499 },
     { name: "Beef Seekh Kabab Fry", price: 1699 },
@@ -411,6 +416,14 @@ const slugify = (name: string) =>
 
 const ID_BASE = Date.now();
 
+/** Used whenever an item has no photo, so the image field is never empty. */
+const PLACEHOLDER_IMAGE = process.env.MENU_PLACEHOLDER_IMAGE || "/images/menu-placeholder.png";
+
+/** Mongo filter: item has no real photo (empty, missing or still the placeholder). */
+const NO_PHOTO = {
+  $or: [{ image: "" }, { image: PLACEHOLDER_IMAGE }, { image: { $exists: false } }],
+};
+
 /** Your admin stores spice level as a number: Mild = 1, Medium = 2, Hot = 3. */
 const SPICE_NUMBER: Record<SpiceLevel, number> = { Mild: 1, Medium: 2, Hot: 3 };
 const DEFAULT_SPICE_LEVEL = 1;
@@ -449,7 +462,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "chicken-white-karahi": "Chicken karahi in a creamy white gravy with mild spices.",
   "chicken-tikka-karahi": "Smoky chicken tikka pieces tossed in a spiced karahi masala.",
 
-  // BBQ & Kabab Fries
+  // BBQ & Fried Kababs
   "chicken-boti-fry": "Chicken boti pan-fried with onions and spices.",
   "chicken-seekh-kabab-fry": "Chicken seekh kababs fried with onions and spices.",
   "beef-seekh-kabab-fry": "Beef seekh kababs fried with onions and spices.",
@@ -600,7 +613,7 @@ function toDoc(item: MenuItem, index: number) {
       : NO_SPICE_CATEGORIES.includes(item.category)
         ? 0
         : DEFAULT_SPICE_LEVEL,
-    image: item.image ?? process.env.MENU_PLACEHOLDER_IMAGE ?? "",
+    image: item.image ?? "",
     isAvailable: item.available,
     isFeatured: item.featured,
   };
@@ -717,33 +730,92 @@ async function isImageUrl(url: string): Promise<boolean> {
   }
 }
 
-async function searchImages(provider: string, query: string): Promise<string[]> {
+type Candidate = { url: string; text: string }; // text = title/description used for matching
+
+/** Words that don't identify a dish, so they are not required to appear in a photo's title. */
+const GENERIC_WORDS = new Set([
+  "chicken", "beef", "mutton", "special", "royal", "signature", "half", "full",
+  "fresh", "and", "the", "of", "with",
+]);
+
+const words = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w));
+
+/**
+ * A photo only counts if its title/description contains EVERY distinctive word of the
+ * dish name ("Chicken Lahori Karahi" needs both "lahori" and "karahi"). No match = no photo.
+ */
+function matchesDish(name: string, text: string): boolean {
+  const need = words(name.replace(/\((half|full)\)/i, "")).filter((w) => !GENERIC_WORDS.has(w));
+  if (need.length === 0) return false;
+  const have = new Set(words(text));
+  return need.every((w) => have.has(w));
+}
+
+async function searchImages(provider: string, query: string): Promise<Candidate[]> {
+  if (provider === "wikimedia") {
+    const api =
+      "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search" +
+      `&gsrsearch=${encodeURIComponent(query + " filetype:bitmap")}&gsrnamespace=6&gsrlimit=30` +
+      "&prop=imageinfo&iiprop=url|mime|size|extmetadata&iiurlwidth=800";
+    const res = await fetch(api, {
+      headers: { "User-Agent": "RoyalSofraMenuSeeder/1.0 (restaurant menu script)" },
+    });
+    if (!res.ok) throw new Error(`Wikimedia ${res.status} ${res.statusText}`);
+    const json = (await res.json()) as {
+      query?: {
+        pages?: Record<
+          string,
+          {
+            title?: string;
+            index?: number;
+            imageinfo?: {
+              thumburl?: string;
+              url: string;
+              mime: string;
+              width: number;
+              extmetadata?: { ImageDescription?: { value?: string } };
+            }[];
+          }
+        >;
+      };
+    };
+    const out: Candidate[] = [];
+    for (const page of Object.values(json.query?.pages ?? {}).sort(
+      (a, b) => (a.index ?? 0) - (b.index ?? 0)
+    )) {
+      const i = page.imageinfo?.[0];
+      if (!i || !/^image\/(jpeg|png|webp)$/.test(i.mime) || i.width < 500) continue;
+      const desc = (i.extmetadata?.ImageDescription?.value ?? "").replace(/<[^>]+>/g, " ");
+      out.push({ url: i.thumburl ?? i.url, text: `${page.title ?? ""} ${desc}` });
+    }
+    return out;
+  }
+
   if (provider === "pexels") {
-    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=5&orientation=landscape`;
+    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=30&orientation=landscape`;
     const res = await fetch(url, { headers: { Authorization: process.env.PEXELS_API_KEY ?? "" } });
     if (!res.ok) throw new Error(`Pexels ${res.status} ${res.statusText}`);
-    const json = (await res.json()) as { photos?: { src: { large: string } }[] };
-    return (json.photos ?? []).map((p) => p.src.large);
+    const json = (await res.json()) as { photos?: { alt?: string; src: { large: string } }[] };
+    return (json.photos ?? []).map((p) => ({ url: p.src.large, text: p.alt ?? "" }));
   }
 
   // serper.dev – Google image results
   const res = await fetch(process.env.SERPER_URL ?? "https://google.serper.dev/images", {
     method: "POST",
     headers: { "X-API-KEY": process.env.SERPER_API_KEY ?? "", "Content-Type": "application/json" },
-    body: JSON.stringify({ q: query, num: 10 }),
+    body: JSON.stringify({ q: query, num: 20 }),
   });
   if (!res.ok) throw new Error(`Serper ${res.status} ${res.statusText}`);
-  const json = (await res.json()) as { images?: { imageUrl?: string }[] };
-  const candidates = (json.images ?? [])
-    .map((i) => i.imageUrl ?? "")
-    .filter((u) => u.startsWith("https://"));
-
-  const valid: string[] = [];
-  for (const u of candidates) {
-    if (valid.length >= 4) break;
-    if (await isImageUrl(u)) valid.push(u);
-  }
-  return valid;
+  const json = (await res.json()) as { images?: { imageUrl?: string; title?: string }[] };
+  return (json.images ?? [])
+    .filter((i) => (i.imageUrl ?? "").startsWith("https://"))
+    .map((i) => ({ url: i.imageUrl as string, text: i.title ?? "" }));
 }
 
 const esc = (t: string) =>
@@ -775,15 +847,14 @@ ${cards}
 </main>`;
 }
 
-async function findImages(items: MenuItem[]) {
+async function findImages(items: MenuItem[]): Promise<ImageEntry[]> {
   const provider = (
     process.env.IMAGE_PROVIDER ??
-    (process.env.SERPER_API_KEY ? "serper" : process.env.PEXELS_API_KEY ? "pexels" : "")
+    (process.env.SERPER_API_KEY ? "serper" : process.env.PEXELS_API_KEY ? "pexels" : "wikimedia")
   ).toLowerCase();
 
-  if (provider !== "serper" && provider !== "pexels") {
-    console.error("Set SERPER_API_KEY (Google results, serper.dev) or PEXELS_API_KEY (free, pexels.com)");
-    console.error("in your env file, then run again.");
+  if (!["serper", "pexels", "wikimedia"].includes(provider)) {
+    console.error(`Unknown IMAGE_PROVIDER "${provider}". Use wikimedia, pexels or serper.`);
     process.exit(1);
   }
   if (provider === "serper" && !process.env.SERPER_API_KEY) {
@@ -796,21 +867,39 @@ async function findImages(items: MenuItem[]) {
   }
 
   console.log(`Searching photos with ${provider}\n`);
-  const cache = new Map<string, string[]>();
+  const cache = new Map<string, Candidate[]>();
   const entries: ImageEntry[] = [];
 
   for (const [i, item] of items.entries()) {
-    const query = imageQuery(item);
-    let urls = cache.get(query);
-    if (!urls) {
-      try {
-        urls = await searchImages(provider, query);
-      } catch (err) {
-        console.log(`  ! ${item.name}: ${(err as Error).message}`);
-        urls = [];
+    // Try the tuned query first, then the plain dish name.
+    const plain = item.name.replace(/\((half|full)\)/i, "").replace(/\s+/g, " ").trim();
+    let query = imageQuery(item);
+    let urls: string[] = [];
+    for (const q of [...new Set([query, plain])]) {
+      let found = cache.get(q);
+      if (!found) {
+        try {
+          found = await searchImages(provider, q);
+        } catch (err) {
+          console.log(`  ! ${item.name}: ${(err as Error).message}`);
+          found = [];
+        }
+        cache.set(q, found);
+        await sleep(provider === "serper" ? 150 : 400);
       }
-      cache.set(query, urls);
-      await sleep(provider === "pexels" ? 400 : 150);
+      // Keep only photos whose title really names this dish.
+      const matched: string[] = [];
+      for (const c of found) {
+        if (matched.length >= 4) break;
+        if (!matchesDish(item.name, c.text)) continue;
+        if (provider === "serper" && !(await isImageUrl(c.url))) continue;
+        matched.push(c.url);
+      }
+      if (matched.length) {
+        urls = matched;
+        query = q;
+        break;
+      }
     }
     entries.push({
       slug: slugify(item.name),
@@ -820,22 +909,28 @@ async function findImages(items: MenuItem[]) {
       url: urls[0] ?? "",
       alternatives: urls.slice(1),
     });
-    console.log(`  ${urls[0] ? "✓" : "✗"} [${i + 1}/${items.length}] ${item.name}  ←  ${query}`);
+    console.log(
+      `  ${urls[0] ? "✓" : "–"} [${i + 1}/${items.length}] ${item.name}` +
+        (urls[0] ? "" : "   (no exact match, placeholder stays)")
+    );
   }
 
   writeFileSync("menu-images.json", JSON.stringify(entries, null, 2));
   writeFileSync("menu-images-review.html", reviewHtml(entries));
 
   const found = entries.filter((e) => e.url).length;
-  console.log(`\nFound photos for ${found} of ${entries.length} items.`);
+  console.log(`\nExact matches for ${found} of ${entries.length} items.`);
+  console.log("The rest keep the placeholder image until you add their photos.");
   console.log("Open menu-images-review.html to check the matches; fix any in menu-images.json.");
 
   const hosts = [...new Set(entries.filter((e) => e.url).map((e) => new URL(e.url).hostname))];
   console.log(
     `\nThese photos come from ${hosts.length} different sites. next/image only loads hosts listed in\n` +
       `next.config images.remotePatterns, so either add them, or use --rehost when applying to copy\n` +
-      `the photos into Cloudinary (your existing host).`
+      `the photos into Cloudinary (your existing host).\n` +
+      `Hosts: ${hosts.join(", ")}`
   );
+  return entries;
 }
 
 async function applyImages(col: Collection) {
@@ -844,6 +939,10 @@ async function applyImages(col: Collection) {
     process.exit(1);
   }
   const entries = JSON.parse(readFileSync("menu-images.json", "utf8")) as ImageEntry[];
+  await applyEntries(col, entries);
+}
+
+async function applyEntries(col: Collection, entries: ImageEntry[]) {
   const rehost = flag("rehost");
 
   const cloud = process.env.CLOUDINARY_CLOUD_NAME;
@@ -864,7 +963,7 @@ async function applyImages(col: Collection) {
       if (rehost) url = await uploadToCloudinary(e.url, e.slug, cloud!, key!, secret!);
       const filter = flag("update")
         ? { slug: e.slug }
-        : { slug: e.slug, $or: [{ image: "" }, { image: { $exists: false } }] };
+        : { slug: e.slug, ...NO_PHOTO };
       const r = await col.updateOne(filter, { $set: { image: url } });
       if (r.matchedCount) {
         applied++;
@@ -925,7 +1024,10 @@ async function syncImages(col: Collection, items: MenuItem[]) {
 
   // 2) list what is still missing
   const noImage = { slug: { $in: slugs }, $or: [{ image: "" }, { image: { $exists: false } }] };
-  const missing = await col.find(noImage).project({ slug: 1, _id: 0 }).toArray();
+  const missing = await col
+    .find({ slug: { $in: slugs }, ...NO_PHOTO })
+    .project({ slug: 1, _id: 0 })
+    .toArray();
   writeFileSync(
     "menu-images-needed.txt",
     missing.map((m) => `${m.slug}.jpg`).join("\n") + "\n"
@@ -933,7 +1035,7 @@ async function syncImages(col: Collection, items: MenuItem[]) {
   console.log(`${missing.length} items have no photo (names saved to menu-images-needed.txt).`);
 
   // 3) optional placeholder for the rest
-  const placeholder = process.env.MENU_PLACEHOLDER_IMAGE;
+  const placeholder = PLACEHOLDER_IMAGE;
   if (placeholder && missing.length) {
     const r = await col.updateMany(noImage, { $set: { image: placeholder } });
     console.log(`Placeholder image set on ${r.modifiedCount} items.`);
@@ -965,7 +1067,7 @@ async function main() {
     return;
   }
 
-  if (flag("find-images") && !flag("dry")) {
+  if (flag("find-images") && !flag("auto-images") && !flag("dry")) {
     await findImages(items);
     return;
   }
@@ -1016,6 +1118,13 @@ async function main() {
 
     const collName = process.env.MONGODB_COLLECTION ?? "menu_items";
     const col = client.db(dbName).collection(collName);
+
+    if (flag("auto-images")) {
+      console.log(`Finding and saving photos for ${dbName}.${collName}\n`);
+      const entries = await findImages(items);
+      await applyEntries(col, entries);
+      return;
+    }
 
     if (flag("apply-images")) {
       console.log(`Applying photos to ${dbName}.${collName}\n`);
@@ -1070,9 +1179,9 @@ async function main() {
             ? {
                 // keep existing id and photo; only write a photo if the script has one
                 $set: { ...doc, ...(image ? { image } : {}), updatedAt: now },
-                $setOnInsert: { id, createdAt: now, ...(image ? {} : { image }) },
+                $setOnInsert: { id, createdAt: now, ...(image ? {} : { image: PLACEHOLDER_IMAGE }) },
               }
-            : { $setOnInsert: { id, image, ...doc, createdAt: now, updatedAt: now } },
+            : { $setOnInsert: { id, image: image || PLACEHOLDER_IMAGE, ...doc, createdAt: now, updatedAt: now } },
           upsert: true,
         },
       };
